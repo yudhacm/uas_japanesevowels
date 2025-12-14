@@ -1,0 +1,7 @@
+streamlit
+numpy
+scipy
+librosa
+scikit-learn
+joblib
+streamlit-mic-recorder
