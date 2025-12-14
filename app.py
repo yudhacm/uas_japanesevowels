@@ -5,6 +5,7 @@ import streamlit as st
 import librosa
 from streamlit_mic_recorder import mic_recorder
 from scipy.signal import resample
+import soundfile as sf
 
 # ===============================
 # KONFIGURASI
@@ -96,7 +97,7 @@ if audio_bytes:
     st.audio("temp.wav")
 
     # load audio
-    y, sr = librosa.load("temp.wav", sr=None)
+    y, sr = sf.read("temp.wav")
 
     if len(y) == 0:
         st.error("⚠ Audio kosong / tidak valid")
@@ -136,3 +137,4 @@ if audio_bytes:
     st.subheader("Detail Probabilitas")
     for cls, p in zip(model.classes_, probs):
         st.write(f"Speaker {cls}: {p*100:.2f}%")
+
