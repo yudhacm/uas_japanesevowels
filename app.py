@@ -1,11 +1,12 @@
 import os
+import io
 import numpy as np
 import joblib
 import streamlit as st
 import librosa
+import soundfile as sf
 from streamlit_mic_recorder import mic_recorder
 from scipy.signal import resample
-import soundfile as sf
 
 # ===============================
 # KONFIGURASI
@@ -29,6 +30,10 @@ model = load_model()
 # LPC EXTRACTION
 # ===============================
 def extract_lpc(y, sr, n_lpc=N_LPC, max_len=MAX_LEN):
+    # pastikan float
+    y = y.astype(np.float32)
+
+    # framing
     frames = librosa.util.frame(
         y,
         frame_length=int(0.03 * sr),
@@ -44,26 +49,29 @@ def extract_lpc(y, sr, n_lpc=N_LPC, max_len=MAX_LEN):
         except:
             continue
 
-    lpc_feats = np.array(lpc_feats)
-
-    # jika frame terlalu sedikit
     if len(lpc_feats) == 0:
         return None
 
+    lpc_feats = np.array(lpc_feats)
+
     # padding / truncate ke 29 frame
     if len(lpc_feats) < max_len:
-        lpc_feats = np.pad(lpc_feats, ((0, max_len - len(lpc_feats)), (0, 0)))
+        lpc_feats = np.pad(
+            lpc_feats,
+            ((0, max_len - len(lpc_feats)), (0, 0)),
+            mode="constant"
+        )
     else:
         lpc_feats = lpc_feats[:max_len]
 
-    # (12, 29) → flatten (1, 348)
+    # (29,12) → (12,29) → flatten
     return lpc_feats.T.flatten().reshape(1, -1)
 
 # ===============================
 # STREAMLIT UI
 # ===============================
 st.title("🎙 Japanese Vowels – Speaker Recognition")
-st.write("Input suara → LPC → Klasifikasi Speaker")
+st.write("Input suara → LPC → Klasifikasi Speaker (1–9)")
 
 mode = st.radio("Pilih Mode Input:", ["🎙 Rekam Langsung", "📂 Upload WAV"])
 audio_bytes = None
@@ -90,17 +98,23 @@ else:
 # ===============================
 if audio_bytes:
 
-    # simpan sementara
-    with open("temp.wav", "wb") as f:
-        f.write(audio_bytes)
+    # ===============================
+    # LOAD AUDIO (CLOUD SAFE)
+    # ===============================
+    try:
+        audio_io = io.BytesIO(audio_bytes)
+        y, sr = sf.read(audio_io)
+    except:
+        st.error("⚠ Gagal membaca audio")
+        st.stop()
 
-    st.audio("temp.wav")
+    # stereo → mono
+    if y.ndim > 1:
+        y = y.mean(axis=1)
 
-    # load audio
-    y, sr = sf.read("temp.wav")
-
+    # kosong?
     if len(y) == 0:
-        st.error("⚠ Audio kosong / tidak valid")
+        st.error("⚠ Audio kosong")
         st.stop()
 
     # resample ke 16kHz
@@ -115,14 +129,18 @@ if audio_bytes:
     # normalisasi
     y = y / (np.max(np.abs(y)) + 1e-9)
 
-    # ekstraksi LPC
+    # ===============================
+    # EKSTRAKSI LPC
+    # ===============================
     feat = extract_lpc(y, SR)
 
     if feat is None:
-        st.error("⚠ LPC gagal diekstraksi")
+        st.error("⚠ LPC gagal diekstraksi (audio terlalu pendek)")
         st.stop()
 
-    # prediksi
+    # ===============================
+    # PREDIKSI
+    # ===============================
     probs = model.predict_proba(feat)[0]
     pred = model.predict(feat)[0]
     conf = np.max(probs) * 100
@@ -137,4 +155,3 @@ if audio_bytes:
     st.subheader("Detail Probabilitas")
     for cls, p in zip(model.classes_, probs):
         st.write(f"Speaker {cls}: {p*100:.2f}%")
-
