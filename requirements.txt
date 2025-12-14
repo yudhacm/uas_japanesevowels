@@ -2,6 +2,7 @@ streamlit
 numpy
 scipy
 librosa
+soundfile
 scikit-learn
 joblib
 streamlit-mic-recorder
